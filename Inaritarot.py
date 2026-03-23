@@ -23,19 +23,24 @@ minor_arcana = [f"{rank} of {suit}" for suit in suits for rank in ranks]
 full_deck = major_arcana + minor_arcana
 
 # --- セッション状態の初期化 ---
-for key, default in [
-    ('deck', list(full_deck)),
-    ('main_cards', []),
-    ('clarifier_cards', {i: [] for i in range(8)}),
-    ('ritual_complete', False),
-    ('shuffles', 7),
-    ('current_question', ""),
-    ('previous_reading', None),
-    ('agreed', False)
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
+def init_session_state():
+    for key, default in [
+        ('deck', list(full_deck)),
+        ('main_cards', []),
+        ('clarifier_cards', {i: [] for i in range(8)}),
+        ('ritual_complete', False),
+        ('shuffles', 7),
+        ('current_question', ""),
+        ('previous_reading', None),
+        ('agreed', False),
+        ('use_reversed', "正逆あり")
+    ]:
+        if key not in st.session_state:
+            st.session_state[key] = default
 
+init_session_state()
+
+# --- 機能追加：メモリ管理 ---
 def reset_for_new_reading():
     if st.session_state.main_cards:
         st.session_state.previous_reading = {
@@ -48,31 +53,37 @@ def reset_for_new_reading():
     st.session_state.main_cards = []
     st.session_state.clarifier_cards = {i: [] for i in range(8)}
     st.session_state.ritual_complete = False
-    st.session_state.agreed = False
 
-# --- カスタムCSS ---
+def hard_reset():
+    # 誓い(agreed)と「1つ前の結果(previous_reading)」だけを保護して、他を完全にクリア
+    agreed_temp = st.session_state.get('agreed', False)
+    previous_temp = st.session_state.get('previous_reading', None)
+    
+    st.session_state.clear()
+    init_session_state()
+    
+    st.session_state.agreed = agreed_temp
+    st.session_state.previous_reading = previous_temp
+
+# --- 改善：カスタムCSS（文字を大きく、読みやすく） ---
 st.markdown("""
     <style>
     .stApp { background: #1a1a2e; color: #e94560; }
-    .stButton>button { color: #e94560; background-color: #1a1a2e; border: 2px solid #e94560; border-radius: 10px; width: 100%; }
+    .stButton>button { color: #e94560; background-color: #1a1a2e; border: 2px solid #e94560; border-radius: 10px; width: 100%; font-size: 1.1em; font-weight: bold; }
     .card-box { 
-        background: #f0f0f0; border-radius: 10px; color: #333; 
-        text-align: center; padding: 15px; margin-bottom: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3); font-weight: bold; font-size: 0.9em;
+        background: #ffffff; border-radius: 10px; color: #111; 
+        text-align: center; padding: 20px 15px; margin-bottom: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-weight: bold; font-size: 1.1em; line-height: 1.4;
     }
     .clarifier-box {
-        background: #dcdcdc; border-radius: 8px; color: #555;
-        text-align: center; padding: 10px; margin-top: 5px; font-size: 0.8em;
+        background: #f8f9fa; border-radius: 8px; color: #333;
+        text-align: center; padding: 12px; margin-top: 8px; font-size: 1.0em; border: 1px solid #ccc;
     }
-    .deck-container {
-        display: flex; justify-content: center; margin-bottom: 10px; margin-top: 10px;
-    }
-    .deck-image {
-        width: 180px; border-radius: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.7);
-    }
+    .deck-container { display: flex; justify-content: center; margin-bottom: 15px; margin-top: 15px; }
+    .deck-image { width: 180px; border-radius: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.7); }
     .pledge-box {
         background: rgba(233, 69, 96, 0.1); border: 1px solid #e94560; 
-        padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px;
+        padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-size: 1.1em;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -100,14 +111,23 @@ if not st.session_state.agreed:
 else:
     st.success("誓いは立てられました。門は開かれています。")
     
+    # --- 追加：完全リセットボタン ---
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🗑️ 全てリセット"):
+            hard_reset()
+            st.rerun()
+            
     st.markdown("### 🧪 儀式の設定")
-    question_input = st.text_area("占いたい質問内容を入力してください", placeholder="例：これからの研究生活について、気をつけるべきことは？")
+    question_input = st.text_area("占いたい質問内容を入力してください", placeholder="例：これからの研究生活について、気をつけるべきことは？", value=st.session_state.current_question)
+    
+    # --- 追加：正位置・逆位置の選択ラジオボタン ---
+    st.session_state.use_reversed = st.radio("カードの向き", ["正逆あり", "正位置のみ"], horizontal=True)
+    
     st.session_state.shuffles = st.number_input("シャッフル回数 (上限99回)", min_value=1, max_value=99, value=st.session_state.shuffles)
 
     if st.button("🚪 ノック（質問を想起してください）"):
-        agreed_temp = st.session_state.agreed 
         reset_for_new_reading()
-        st.session_state.agreed = agreed_temp 
         st.session_state.current_question = question_input 
         
         total = st.session_state.shuffles
@@ -140,7 +160,11 @@ def animate_and_draw_single(label):
     
     if len(st.session_state.deck) > 0:
         card = st.session_state.deck.pop(0)
-        position = random.choice(["正位置", "逆位置"])
+        # --- 変更：選択肢に応じて向きを決定 ---
+        if st.session_state.use_reversed == "正位置のみ":
+            position = "正位置"
+        else:
+            position = random.choice(["正位置", "逆位置"])
         return f"{card} 【{position}】"
     return None
 
@@ -168,7 +192,6 @@ if st.session_state.ritual_complete:
 
     st.markdown("---")
     
-    # 👇 ここが修正ポイント！ 4枚ごとに新しい行を作成します
     if st.session_state.main_cards:
         for row_start in range(0, len(st.session_state.main_cards), 4):
             cols = st.columns(4)
@@ -187,7 +210,6 @@ if st.session_state.ritual_complete:
                                 if drawn:
                                     st.session_state.clarifier_cards[i].append(drawn)
                                     st.rerun()
-            # 行の間に余白を追加
             st.write("") 
             st.write("") 
 
