@@ -43,9 +43,11 @@ init_session_state()
 # --- 機能追加：メモリ管理 ---
 def reset_for_new_reading():
     if st.session_state.main_cards:
+        # 修正：1つ前の結果にも「向き設定」を保存するように変更
         st.session_state.previous_reading = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "question": st.session_state.current_question,
+            "use_reversed": st.session_state.use_reversed, # 👈 ここを追加！
             "cards": list(st.session_state.main_cards),
             "clarifiers": {k: list(v) for k, v in st.session_state.clarifier_cards.items()}
         }
@@ -65,7 +67,7 @@ def hard_reset():
     st.session_state.agreed = agreed_temp
     st.session_state.previous_reading = previous_temp
 
-# --- 改善：カスタムCSS（文字を大きく、読みやすく） ---
+# --- 改善：カスタムCSS（文字を白く、読みやすく） ---
 st.markdown("""
     <style>
     .stApp { background: #1a1a2e; color: #e94560; }
@@ -84,6 +86,20 @@ st.markdown("""
     .pledge-box {
         background: rgba(233, 69, 96, 0.1); border: 1px solid #e94560; 
         padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-size: 1.1em;
+    }
+
+    /* 👈 修正：入力欄の文字（プレースホルダー）を白くする設定を追加 */
+    textarea::placeholder {
+        color: white !important;
+        opacity: 0.8 !important; /* 透明度を少し残してプレースホルダーっぽさを出す */
+    }
+    input[type="number"]::placeholder {
+        color: white !important;
+        opacity: 0.8 !important;
+    }
+    /* ラジオボタンのラベルも見やすく白に */
+    div[data-testid="stRadio"] label {
+        color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -222,6 +238,9 @@ if st.session_state.ritual_complete:
         if st.session_state.current_question:
             result_text += f"【質問内容】\n{st.session_state.current_question}\n\n"
             
+        # 👈 修正：今の結果のコピーテキストに「向き設定」を追加
+        result_text += f"【カードの向き設定】\n{st.session_state.use_reversed}\n\n"
+        
         result_text += "【リーディング結果】\n"
         for i, card in enumerate(st.session_state.main_cards):
             result_text += f"[{i+1}枚目] {card}\n"
@@ -241,6 +260,10 @@ if st.session_state.previous_reading:
     
     if prev.get('question'):
         prev_text += f"【質問内容】\n{prev['question']}\n\n"
+    
+    # 👈 修正：1個前の結果のコピーテキストにも「向き設定」を追加
+    if prev.get('use_reversed'):
+        prev_text += f"【カードの向き設定】\n{prev['use_reversed']}\n\n"
         
     prev_text += "【リーディング結果】\n"
     for i, card in enumerate(prev['cards']):
